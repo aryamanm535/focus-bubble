@@ -229,8 +229,8 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
 
   // ── Playback controls (DJ only) ────────────────────────────────────────────
   async function togglePlayPause() {
-    if (!token || !amDj) return
-    const playing = myTrack?.isPlaying ?? false
+    if (!token) return
+    const playing = displayTrack?.isPlaying ?? false
     await fetch(`https://api.spotify.com/v1/me/player/${playing ? 'pause' : 'play'}`, {
       method: 'PUT', headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {})
@@ -238,7 +238,7 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   }
 
   async function skipNext() {
-    if (!token || !amDj) return
+    if (!token) return
     await fetch('https://api.spotify.com/v1/me/player/next', {
       method: 'POST', headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {})
@@ -247,7 +247,7 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   }
 
   async function skipPrevious() {
-    if (!token || !amDj) return
+    if (!token) return
     await fetch('https://api.spotify.com/v1/me/player/previous', {
       method: 'POST', headers: { Authorization: `Bearer ${token}` },
     }).catch(() => {})
@@ -280,7 +280,7 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   }
 
   async function playFromQueue(uri: string) {
-    if (!token || !amDj) return
+    if (!token) return
     await fetch('https://api.spotify.com/v1/me/player/play', {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -468,8 +468,8 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
                 </div>
               )}
 
-              {/* ── Playback controls (DJ only) ── */}
-              {amDj && (
+              {/* ── Playback controls ── */}
+              {token && (
                 <div className="flex items-center justify-center gap-5 mb-4">
                   <button onClick={skipPrevious}
                           className="p-1.5 rounded-full transition-all hover:bg-white/10"
@@ -479,7 +479,7 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
                   <button onClick={togglePlayPause}
                           className="w-9 h-9 rounded-full flex items-center justify-center transition-all hover:scale-105"
                           style={{ background: '#1db954', color: '#000' }}>
-                    {myTrack?.isPlaying
+                    {displayTrack?.isPlaying
                       ? <Pause size={16} fill="currentColor" />
                       : <Play  size={16} fill="currentColor" style={{ marginLeft: 2 }} />}
                   </button>
@@ -546,12 +546,12 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
                           {queue.map((item, i) => (
                             <button
                               key={`${item.id}-${i}`}
-                              onClick={() => amDj && playFromQueue(item.uri)}
-                              disabled={!amDj}
+                              onClick={() => playFromQueue(item.uri)}
+                              disabled={!token}
                               className="flex items-center gap-2.5 px-4 py-2 text-left transition-all"
                               style={{
-                                cursor: amDj ? 'pointer' : 'default',
-                                opacity: amDj ? 1 : 0.7,
+                                cursor: token ? 'pointer' : 'default',
+                                opacity: token ? 1 : 0.7,
                               }}
                               onMouseEnter={e => { if (amDj) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)' }}
                               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
