@@ -83,6 +83,8 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastId      = useRef<string | null>(null)
   const volDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const djUserIdRef = useRef<string | null>(null)
+  const myTrackRef  = useRef<TrackInfo | null>(null)
   const amDj        = token !== null && djUserId === userId
 
   // ── Token ──────────────────────────────────────────────────────────────────
@@ -98,7 +100,7 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     channel.on('broadcast', { event: 'music' }, ({ payload }: { payload: any }) => {
       if (payload.fromUserId === userId) return
-      setDjUserId(payload.id ? payload.fromUserId : null)
+      setDjUserId(payload.fromUserId)  // always track DJ identity; cleared via music_presence disconnect
       setTheirTrack(payload as TrackInfo)
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,6 +112,25 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
         else next.delete(payload.userId)
         return next
       })
+      // If the DJ disconnected, clear their slot so the next person can claim it
+      if (!payload.connected && djUserIdRef.current === payload.userId) {
+        setDjUserId(null)
+      }
+      // If I'm already DJ and someone new connects, immediately announce so they
+      // receive the current track before their 2.5 s claim-timer fires
+      if (payload.connected && djUserIdRef.current === userId) {
+        const t = localStorage.getItem(TOKEN_KEY)
+        if (t) {
+          channel.send({
+            type: 'broadcast', event: 'music',
+            payload: myTrackRef.current ?? {
+              fromUserId: userId, id: null, isPlaying: false,
+              name: '', artist: '', albumArt: null,
+              previewUrl: null, spotifyUrl: '', trackUri: null, progressMs: 0,
+            },
+          })
+        }
+      }
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     channel.on('broadcast', { event: 'music_handoff' }, ({ payload }: { payload: any }) => {
@@ -170,6 +191,9 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
       setListeningAlong(false)
     }
   }, [amDj])
+
+  useEffect(() => { djUserIdRef.current = djUserId }, [djUserId])
+  useEffect(() => { myTrackRef.current  = myTrack  }, [myTrack])
 
   useEffect(() => () => {
     audioRef.current?.pause()
@@ -330,10 +354,13 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     window.location.href = `https://accounts.spotify.com/authorize?${q}`
   }
 
-  // 1. Claim DJ as soon as token is known — no channel needed for this decision
+  // 1. Claim DJ after a short delay — gives the existing DJ time to announce
+  //    themselves via the music_presence handler before this fires.
+  //    Functional update: only claim if no one else already has.
   useEffect(() => {
     if (!token) return
-    if (!djUserId) setDjUserId(userId)
+    const t = setTimeout(() => setDjUserId(prev => prev ?? userId), 2500)
+    return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
@@ -358,10 +385,6 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(EXPIRY_KEY)
     channel?.send({ type: 'broadcast', event: 'music_presence', payload: { userId, connected: false } })
-    if (amDj) {
-      channel?.send({ type: 'broadcast', event: 'music',
-        payload: { fromUserId: userId, id: null, isPlaying: false, name: '', artist: '', trackUri: null, progressMs: 0 } })
-    }
     stopPolling()
     setToken(null); setMyTrack(null)
     setDjUserId(prev => prev === userId ? null : prev)
@@ -372,8 +395,6 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   async function handOffDj(toUserId: string) {
     setShowHandoff(false)
     channel?.send({ type: 'broadcast', event: 'music_handoff', payload: { toUserId } })
-    channel?.send({ type: 'broadcast', event: 'music',
-      payload: { fromUserId: userId, id: null, isPlaying: false, name: '', artist: '', trackUri: null, progressMs: 0 } })
     stopPolling()
     setDjUserId(toUserId)
   }
