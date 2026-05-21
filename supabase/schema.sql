@@ -96,3 +96,13 @@ create policy "Users can manage own sessions"
 -- ── Realtime ─────────────────────────────────────────────────────────────────
 -- Enable realtime for rooms table (timer sync)
 alter publication supabase_realtime add table public.rooms;
+
+-- ── Grants ───────────────────────────────────────────────────────────────────
+grant usage on schema public to anon, authenticated;
+
+grant all on public.profiles       to authenticated;
+grant all on public.rooms          to authenticated;
+grant all on public.focus_sessions to authenticated;
+
+grant select on public.profiles to anon;
+grant select on public.rooms    to anon;
