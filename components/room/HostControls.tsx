@@ -40,8 +40,9 @@ export default function HostControls({ roomId, isHost, participants, currentUser
   async function doEndSession() {
     setLoading(true)
     onEndSession()
-    // Small delay for broadcast to propagate
+    // Small delay for broadcast to propagate before deleting
     await new Promise(r => setTimeout(r, 400))
+    await supabase.from('rooms').delete().eq('id', roomId)
     router.push('/dashboard')
   }
 
