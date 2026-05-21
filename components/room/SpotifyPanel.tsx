@@ -114,8 +114,7 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     channel.on('broadcast', { event: 'music_handoff' }, ({ payload }: { payload: any }) => {
       if (payload.toUserId !== userId) return
-      setDjUserId(userId)
-      startPolling()
+      setDjUserId(userId)  // effect 3 starts polling automatically
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel, userId])
@@ -331,13 +330,29 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     window.location.href = `https://accounts.spotify.com/authorize?${q}`
   }
 
+  // 1. Claim DJ as soon as token is known — no channel needed for this decision
+  useEffect(() => {
+    if (!token) return
+    if (!djUserId) setDjUserId(userId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
+
+  // 2. Announce Spotify presence when channel is ready
   useEffect(() => {
     if (!token || !channel) return
     channel.send({ type: 'broadcast', event: 'music_presence',
       payload: { userId, displayName, connected: true } })
-    if (!djUserId) { setDjUserId(userId); startPolling() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [!!token, !!channel])
+
+  // 3. Start / stop polling whenever DJ status or channel availability changes
+  useEffect(() => {
+    if (!token) return
+    const isDj = djUserId === userId
+    if (isDj && channel) { startPolling(); return () => stopPolling() }
+    if (!isDj) stopPolling()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [djUserId, !!channel, !!token])
 
   function disconnect() {
     localStorage.removeItem(TOKEN_KEY)
