@@ -14,6 +14,7 @@ import PomodoroTimer   from '@/components/room/PomodoroTimer'
 import TaskModal       from '@/components/room/TaskModal'
 import HostControls    from '@/components/room/HostControls'
 import MediaPanel      from '@/components/room/MediaPanel'
+import SpotifyPanel    from '@/components/room/SpotifyPanel'
 import { ENVIRONMENTS, REACTIONS, STATUS_COLORS } from '@/lib/utils'
 import type { Room, TimerState, PresenceUser, Reaction } from '@/types'
 
@@ -428,6 +429,8 @@ export default function RoomPage() {
             {presenceEnabled ? <Eye size={12} /> : <EyeOff size={12} />}
             <span className="hidden sm:inline">Presence</span>
           </button>
+
+          <SpotifyPanel userId={profile?.id ?? ''} channel={channelRef.current} />
 
           <button onClick={copyShareable}
                   className="p-2 rounded-xl hover:bg-white/10 transition-all"
