@@ -57,6 +57,7 @@ create table public.rooms (
   focus_duration   int not null default 25,
   break_duration   int not null default 5,
   timer_state      jsonb not null default '{"status":"idle","started_at":null,"ends_at":null,"round":0}',
+  media_mode       text not null default 'none',
   created_at       timestamptz default now()
 );
 

@@ -86,6 +86,7 @@ function CreateRoomModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [isPublic, setPublic]     = useState(true)
   const [focusMins, setFocus]     = useState(25)
   const [breakMins, setBreak]     = useState(5)
+  const [mediaMode, setMediaMode] = useState<'none' | 'audio' | 'video'>('none')
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState<string | null>(null)
 
@@ -106,6 +107,7 @@ function CreateRoomModal({ onClose, onCreated }: { onClose: () => void; onCreate
       host_id: user.id,
       focus_duration: focusMins,
       break_duration: breakMins,
+      media_mode: mediaMode,
     }).select().single()
 
     if (err || !data) {
@@ -208,6 +210,28 @@ function CreateRoomModal({ onClose, onCreated }: { onClose: () => void; onCreate
                             border: `1.5px solid ${isPublic === v ? (v ? '#7d9e84' : '#9b8dbc') : 'transparent'}`,
                           }}>
                     <Icon size={16} style={{ color: isPublic === v ? (v ? '#5c7e63' : '#7a6d9e') : '#b8a89a' }} />
+                    <span className="text-xs font-medium" style={{ color: '#3d2e23' }}>{label}</span>
+                    <span className="text-xs" style={{ color: '#7a6a60' }}>{desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium block mb-2" style={{ color: '#7a6a60' }}>Media</label>
+              <div className="flex gap-2">
+                {[
+                  { v: 'none'  as const, emoji: '🔇', label: 'No media',    desc: 'Focus only'       },
+                  { v: 'audio' as const, emoji: '🎙️', label: 'Voice',       desc: 'Mic enabled'      },
+                  { v: 'video' as const, emoji: '📹', label: 'Video + Mic', desc: 'Cam + mic'        },
+                ].map(({ v, emoji, label, desc }) => (
+                  <button type="button" key={v} onClick={() => setMediaMode(v)}
+                          className="flex-1 flex flex-col items-center gap-1 p-3 rounded-xl transition-all"
+                          style={{
+                            background: mediaMode === v ? '#e0d9f0' : '#f0ede6',
+                            border: `1.5px solid ${mediaMode === v ? '#9b8dbc' : 'transparent'}`,
+                          }}>
+                    <span className="text-base">{emoji}</span>
                     <span className="text-xs font-medium" style={{ color: '#3d2e23' }}>{label}</span>
                     <span className="text-xs" style={{ color: '#7a6a60' }}>{desc}</span>
                   </button>

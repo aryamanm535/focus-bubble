@@ -20,6 +20,7 @@ export interface Room {
   focus_duration: number
   break_duration: number
   timer_state: TimerState
+  media_mode: 'none' | 'audio' | 'video'
   created_at: string
   participant_count?: number
 }

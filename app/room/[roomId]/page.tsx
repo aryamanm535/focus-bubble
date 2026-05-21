@@ -6,12 +6,14 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Users, Eye, EyeOff, Copy, Check, Share2, Zap } from 'lucide-react'
+import { ArrowLeft, Users, Eye, EyeOff, Check, Share2, Zap, Crown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import AmbientScene    from '@/components/ambient/AmbientScene'
 import PomodoroTimer   from '@/components/room/PomodoroTimer'
 import TaskModal       from '@/components/room/TaskModal'
+import HostControls    from '@/components/room/HostControls'
+import MediaPanel      from '@/components/room/MediaPanel'
 import { ENVIRONMENTS, REACTIONS, STATUS_COLORS } from '@/lib/utils'
 import type { Room, TimerState, PresenceUser, Reaction } from '@/types'
 
@@ -25,7 +27,7 @@ interface ActivityEvent {
 }
 
 // ── Avatar card ────────────────────────────────────────────────────────────
-function AvatarCard({ user, isSelf }: { user: PresenceUser; isSelf: boolean }) {
+function AvatarCard({ user, isSelf, isHost }: { user: PresenceUser; isSelf: boolean; isHost: boolean }) {
   const initials = (user.displayName || '?')
     .split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase()
   const isActive = user.status === 'active'
@@ -65,6 +67,12 @@ function AvatarCard({ user, isSelf }: { user: PresenceUser; isSelf: boolean }) {
         {user.status === 'break' && (
           <div className="absolute inset-0 flex items-center justify-center text-lg"
                style={{ background: 'rgba(0,0,0,0.5)' }}>☕</div>
+        )}
+
+        {/* Host crown */}
+        {isHost && (
+          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-xs leading-none"
+               style={{ filter: 'drop-shadow(0 0 4px rgba(200,170,80,0.8))' }}>👑</div>
         )}
       </div>
 
@@ -202,6 +210,10 @@ export default function RoomPage() {
       pushActivity(payload.emoji, payload.text)
     })
 
+    channel.on('broadcast', { event: 'end_session' }, () => {
+      router.push('/dashboard')
+    })
+
     channel.subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await channel.track({
@@ -231,6 +243,7 @@ export default function RoomPage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
           const updated = payload.new as Room
+          // Sync timer state
           const newState = updated.timer_state
           setTimerState(prev => {
             if (prev.status !== newState.status) {
@@ -240,6 +253,8 @@ export default function RoomPage() {
             }
             return newState
           })
+          // Sync host_id (for host transfer)
+          setRoom(prev => prev ? { ...prev, host_id: updated.host_id } : prev)
         })
       .subscribe()
     return () => { supabase.removeChannel(sub) }
@@ -342,6 +357,10 @@ export default function RoomPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  async function handleEndSession() {
+    await channelRef.current?.send({ type: 'broadcast', event: 'end_session', payload: {} })
+  }
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#070510' }}>
       <div className="w-8 h-8 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
@@ -415,6 +434,14 @@ export default function RoomPage() {
                   style={{ color: 'rgba(255,255,255,0.5)' }}>
             {copied ? <Check size={15} /> : <Share2 size={15} />}
           </button>
+
+          <HostControls
+            roomId={roomId}
+            isHost={isHost}
+            participants={participants}
+            currentUserId={profile?.id ?? ''}
+            onEndSession={handleEndSession}
+          />
         </div>
       </div>
 
@@ -423,6 +450,17 @@ export default function RoomPage() {
 
         {/* Left: Timer + squad */}
         <div className="flex flex-col gap-4">
+
+          {/* Media panel (only if room has media enabled) */}
+          {room.media_mode !== 'none' && profile && (
+            <MediaPanel
+              roomId={roomId}
+              userId={profile.id}
+              displayName={profile.display_name ?? 'Anonymous'}
+              mediaMode={room.media_mode}
+              channel={channelRef.current}
+            />
+          )}
 
           {/* Round badge */}
           {timerState.round > 0 && (
@@ -514,7 +552,7 @@ export default function RoomPage() {
             <div className="flex flex-wrap gap-4">
               <AnimatePresence mode="popLayout">
                 {participants.map(u => (
-                  <AvatarCard key={u.userId} user={u} isSelf={u.userId === profile?.id} />
+                  <AvatarCard key={u.userId} user={u} isSelf={u.userId === profile?.id} isHost={room.host_id === u.userId} />
                 ))}
               </AnimatePresence>
               {participants.length === 0 && (
