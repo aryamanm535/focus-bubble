@@ -36,7 +36,7 @@ interface Props {
   channel: RealtimeChannel | null
 }
 
-const SCOPES     = 'user-read-currently-playing user-read-playback-state user-modify-playback-state user-read-queue'
+const SCOPES     = 'user-read-currently-playing user-read-playback-state user-modify-playback-state'
 const TOKEN_KEY  = 'spotify_access_token'
 const EXPIRY_KEY = 'spotify_token_expiry'
 const POLL_MS    = 6000
