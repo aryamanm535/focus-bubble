@@ -430,7 +430,7 @@ export default function RoomPage() {
             <span className="hidden sm:inline">Presence</span>
           </button>
 
-          <SpotifyPanel userId={profile?.id ?? ''} channel={channelRef.current} />
+          <SpotifyPanel userId={profile?.id ?? ''} displayName={profile?.display_name ?? 'Anonymous'} channel={channelRef.current} />
 
           <button onClick={copyShareable}
                   className="p-2 rounded-xl hover:bg-white/10 transition-all"
