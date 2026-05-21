@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #f7f4ef;
+  --color-surface: #fdfaf6;
+  --color-muted: #ede9e0;
+  --color-border: #dbd4c8;
+
+  --color-sage: #7d9e84;
+  --color-sage-50: #f2f7f3;
+  --color-sage-100: #d9eadc;
+  --color-sage-200: #b8d4bc;
+  --color-sage-500: #7d9e84;
+  --color-sage-600: #5c7e63;
+  --color-sage-700: #3f5c44;
+
+  --color-lavender: #9b8dbc;
+  --color-lavender-50: #f5f3fa;
+  --color-lavender-100: #e0d9f0;
+  --color-lavender-200: #c4b8e0;
+  --color-lavender-500: #9b8dbc;
+  --color-lavender-600: #7a6d9e;
+
+  --color-coral: #c86452;
+  --color-coral-50: #fdf3f1;
+  --color-coral-100: #f7d5ce;
+  --color-coral-200: #eeaa9c;
+  --color-coral-500: #c86452;
+  --color-coral-600: #a54738;
+
+  --color-ink: #3d2e23;
+  --color-ink-muted: #7a6a60;
+  --color-ink-faint: #b8a89a;
+
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Lora', Georgia, serif;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 32px;
+}
+
+/* ── Keyframes ──────────────────────────────────────── */
+
+@keyframes rain-fall {
+  from { transform: translateY(-20px) rotate(15deg); opacity: 0.6; }
+  to   { transform: translateY(110vh)  rotate(15deg); opacity: 0.6; }
+}
+
+@keyframes leaf-fall {
+  0%   { transform: translateY(-20px) rotate(0deg)   translateX(0);    opacity: 1; }
+  25%  { transform: translateY(25vh)  rotate(90deg)  translateX(28px);  }
+  50%  { transform: translateY(50vh)  rotate(180deg) translateX(-18px); }
+  75%  { transform: translateY(75vh)  rotate(270deg) translateX(22px);  }
+  100% { transform: translateY(110vh) rotate(360deg) translateX(0);    opacity: 0; }
+}
+
+@keyframes dust-float {
+  0%   { transform: translateY(0) translateX(0);     opacity: 0; }
+  10%  { opacity: 0.5; }
+  90%  { opacity: 0.2; }
+  100% { transform: translateY(-70px) translateX(18px); opacity: 0; }
+}
+
+@keyframes code-drop {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  5%   { opacity: 0.9; }
+  85%  { opacity: 0.4; }
+  100% { transform: translateY(110vh); opacity: 0; }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 0.8; }
+}
+
+@keyframes presence-ping {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+@keyframes reaction-float {
+  0%   { transform: translateY(0)     scale(1);   opacity: 1; }
+  100% { transform: translateY(-90px) scale(0.4); opacity: 0; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+
+.animate-rain       { animation: rain-fall  linear infinite; }
+.animate-leaf       { animation: leaf-fall  linear infinite; }
+.animate-dust       { animation: dust-float ease-in-out infinite; }
+.animate-code-drop  { animation: code-drop  linear infinite; }
+.animate-glow-pulse { animation: glow-pulse ease-in-out infinite; }
+.animate-fade-up    { animation: fade-up 0.45s ease-out; }
+.animate-reaction   { animation: reaction-float 1.6s ease-out forwards; }
+.animate-bob        { animation: bob 3s ease-in-out infinite; }
+
+.animate-ping-ring {
+  animation: presence-ping 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+}
+
+/* ── Base ───────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background-color: #f7f4ef;
+  color: #3d2e23;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: #dbd4c8; border-radius: 2px; }
+
+/* ── Typography helpers ─────────────────────────────── */
+
+.font-display { font-family: 'Lora', Georgia, serif; }
+
+/* ── Focus ring ─────────────────────────────────────── */
+
+[data-focus-ring]:focus-visible {
+  outline: 2px solid #9b8dbc;
+  outline-offset: 2px;
+}
