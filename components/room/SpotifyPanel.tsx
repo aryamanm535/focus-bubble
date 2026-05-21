@@ -83,9 +83,11 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastId      = useRef<string | null>(null)
   const volDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const djUserIdRef = useRef<string | null>(null)
-  const myTrackRef  = useRef<TrackInfo | null>(null)
-  const amDj        = token !== null && djUserId === userId
+  const djUserIdRef          = useRef<string | null>(null)
+  const myTrackRef           = useRef<TrackInfo | null>(null)
+  const theirTrackRef        = useRef<TrackInfo | null>(null)
+  const theirTrackReceivedAt = useRef<number>(0)
+  const amDj                 = token !== null && djUserId === userId
 
   // ── Token ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -102,6 +104,8 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
       if (payload.fromUserId === userId) return
       setDjUserId(payload.fromUserId)  // always track DJ identity; cleared via music_presence disconnect
       setTheirTrack(payload as TrackInfo)
+      theirTrackRef.current        = payload as TrackInfo
+      theirTrackReceivedAt.current = Date.now()
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     channel.on('broadcast', { event: 'music_presence' }, ({ payload }: { payload: any }) => {
@@ -141,32 +145,61 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
   }, [channel, userId])
 
   // ── Listen-along ───────────────────────────────────────────────────────────
+  // Fires on new track OR play/pause change from DJ
   useEffect(() => {
     if (!token || amDj) return
     if (!theirTrack?.trackUri || !theirTrack.id) return
-    if (theirTrack.id === lastId.current) return
+    const t = localStorage.getItem(TOKEN_KEY)
+    if (!t) return
+
+    const elapsed          = theirTrackReceivedAt.current > 0 ? Date.now() - theirTrackReceivedAt.current : 0
+    const estimatedProgress = Math.max(0, theirTrack.progressMs + (theirTrack.isPlaying ? elapsed : 0))
+
+    // Same track — only sync play/pause without seeking (avoids jarring seek)
+    if (theirTrack.id === lastId.current) {
+      const endpoint = theirTrack.isPlaying ? 'play' : 'pause'
+      fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
+        method: 'PUT', headers: { Authorization: `Bearer ${t}` },
+      }).catch(() => {
+        if (!theirTrack.isPlaying) { audioRef.current?.pause() }
+        else if (audioRef.current?.src) { audioRef.current.play().catch(() => {}) }
+      })
+      return
+    }
+
+    // New track
     lastId.current = theirTrack.id
     audioRef.current?.pause()
     if (audioRef.current) audioRef.current.src = ''
 
     fetch('https://api.spotify.com/v1/me/player/play', {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: [theirTrack.trackUri], position_ms: theirTrack.progressMs }),
+      headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uris: [theirTrack.trackUri], position_ms: estimatedProgress }),
     })
-      .then(r => { if (r.ok || r.status === 204) setListeningAlong(true) })
+      .then(r => {
+        if (r.ok || r.status === 204) {
+          setListeningAlong(true)
+          // If DJ is paused, immediately pause after seeking to lock position
+          if (!theirTrack.isPlaying) {
+            fetch('https://api.spotify.com/v1/me/player/pause', {
+              method: 'PUT', headers: { Authorization: `Bearer ${t}` },
+            }).catch(() => {})
+          }
+        }
+      })
       .catch(() => {
         setListeningAlong(false)
         if (theirTrack.previewUrl) {
           if (!audioRef.current) audioRef.current = new Audio()
-          audioRef.current.src   = theirTrack.previewUrl
-          audioRef.current.loop  = true
+          audioRef.current.src    = theirTrack.previewUrl
+          audioRef.current.loop   = true
           audioRef.current.volume = muted ? 0 : volume / 100
           if (theirTrack.isPlaying) audioRef.current.play().catch(() => {})
         }
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theirTrack?.id, token, amDj])
+  }, [theirTrack?.id, theirTrack?.isPlaying, token, amDj])
 
   // ── Preview fallback (no token) ────────────────────────────────────────────
   useEffect(() => {
@@ -194,6 +227,77 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
 
   useEffect(() => { djUserIdRef.current = djUserId }, [djUserId])
   useEffect(() => { myTrackRef.current  = myTrack  }, [myTrack])
+
+  // ── Listener lock-in polling ───────────────────────────────────────────────
+  // Every 4 s, verify the listener is still on the DJ's track.
+  // Catches manual overrides and play-state drift without needing the DJ
+  // to send a new broadcast.
+  useEffect(() => {
+    if (!token || amDj) return
+
+    async function listenerSync() {
+      const t = localStorage.getItem(TOKEN_KEY)
+      if (!t) return
+      const djTrack = theirTrackRef.current
+      if (!djTrack?.id || !djTrack.trackUri) return
+
+      const elapsed           = theirTrackReceivedAt.current > 0 ? Date.now() - theirTrackReceivedAt.current : 0
+      const estimatedProgress = Math.max(0, djTrack.progressMs + (djTrack.isPlaying ? elapsed : 0))
+
+      try {
+        const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+          headers: { Authorization: `Bearer ${t}` },
+        })
+        if (res.status === 401) {
+          localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(EXPIRY_KEY)
+          setToken(null); return
+        }
+        if (res.status === 204) {
+          // No active device — try to start if DJ is playing
+          if (djTrack.isPlaying) {
+            await fetch('https://api.spotify.com/v1/me/player/play', {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uris: [djTrack.trackUri], position_ms: estimatedProgress }),
+            }).catch(() => {})
+            setListeningAlong(true)
+          }
+          return
+        }
+        const data = await res.json()
+        if (!data?.item) return
+
+        const uriMismatch  = data.item.uri !== djTrack.trackUri
+        const bigDrift     = Math.abs((data.progress_ms ?? 0) - estimatedProgress) > 8000
+        const playMismatch = data.is_playing !== djTrack.isPlaying
+
+        if (uriMismatch || bigDrift) {
+          // Force back onto DJ's track at current estimated position
+          await fetch('https://api.spotify.com/v1/me/player/play', {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uris: [djTrack.trackUri], position_ms: estimatedProgress }),
+          }).catch(() => {})
+          if (!djTrack.isPlaying) {
+            await fetch('https://api.spotify.com/v1/me/player/pause', {
+              method: 'PUT', headers: { Authorization: `Bearer ${t}` },
+            }).catch(() => {})
+          }
+          setListeningAlong(true)
+        } else if (playMismatch) {
+          const endpoint = djTrack.isPlaying ? 'play' : 'pause'
+          await fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
+            method: 'PUT', headers: { Authorization: `Bearer ${t}` },
+          }).catch(() => {})
+          setListeningAlong(true)
+        }
+      } catch { /* network */ }
+    }
+
+    const id = setInterval(listenerSync, 4000)
+    return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, amDj])
 
   useEffect(() => () => {
     audioRef.current?.pause()
@@ -485,12 +589,12 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
               ) : (
                 <div className="flex items-center gap-2 mb-4 py-2 text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
                   <Music size={13} />
-                  {token ? 'Nothing playing on Spotify' : 'No music in this room'}
+                  {djUserId ? 'Nothing playing' : 'No music in this room'}
                 </div>
               )}
 
-              {/* ── Playback controls ── */}
-              {token && (
+              {/* ── Playback controls (DJ only) ── */}
+              {amDj && (
                 <div className="flex items-center justify-center gap-5 mb-4">
                   <button onClick={skipPrevious}
                           className="p-1.5 rounded-full transition-all hover:bg-white/10"
@@ -532,8 +636,8 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
               </div>
             </div>
 
-            {/* ── Queue ── */}
-            {token && (
+            {/* ── Queue (DJ only) ── */}
+            {amDj && (
               <div className="border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
                 <button
                   onClick={toggleQueue}
