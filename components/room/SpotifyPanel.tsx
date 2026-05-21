@@ -178,17 +178,17 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
       body: JSON.stringify({ uris: [theirTrack.trackUri], position_ms: estimatedProgress }),
     })
       .then(r => {
-        if (r.ok || r.status === 204) {
-          setListeningAlong(true)
-          // If DJ is paused, immediately pause after seeking to lock position
-          if (!theirTrack.isPlaying) {
-            fetch('https://api.spotify.com/v1/me/player/pause', {
-              method: 'PUT', headers: { Authorization: `Bearer ${t}` },
-            }).catch(() => {})
-          }
+        if (!r.ok && r.status !== 204) throw new Error(`${r.status}`)
+        setListeningAlong(true)
+        // If DJ is paused, immediately pause after seeking to lock position
+        if (!theirTrack.isPlaying) {
+          fetch('https://api.spotify.com/v1/me/player/pause', {
+            method: 'PUT', headers: { Authorization: `Bearer ${t}` },
+          }).catch(() => {})
         }
       })
       .catch(() => {
+        // No active device (404) or no Premium (403) — fall back to 30 s preview
         setListeningAlong(false)
         if (theirTrack.previewUrl) {
           if (!audioRef.current) audioRef.current = new Audio()
@@ -255,12 +255,12 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
         if (res.status === 204) {
           // No active device — try to start if DJ is playing
           if (djTrack.isPlaying) {
-            await fetch('https://api.spotify.com/v1/me/player/play', {
+            const r = await fetch('https://api.spotify.com/v1/me/player/play', {
               method: 'PUT',
               headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({ uris: [djTrack.trackUri], position_ms: estimatedProgress }),
-            }).catch(() => {})
-            setListeningAlong(true)
+            }).catch(() => null)
+            if (r && (r.ok || r.status === 204)) setListeningAlong(true)
           }
           return
         }
@@ -273,23 +273,25 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
 
         if (uriMismatch || bigDrift) {
           // Force back onto DJ's track at current estimated position
-          await fetch('https://api.spotify.com/v1/me/player/play', {
+          const playRes = await fetch('https://api.spotify.com/v1/me/player/play', {
             method: 'PUT',
             headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ uris: [djTrack.trackUri], position_ms: estimatedProgress }),
-          }).catch(() => {})
-          if (!djTrack.isPlaying) {
-            await fetch('https://api.spotify.com/v1/me/player/pause', {
-              method: 'PUT', headers: { Authorization: `Bearer ${t}` },
-            }).catch(() => {})
+          }).catch(() => null)
+          if (playRes && (playRes.ok || playRes.status === 204)) {
+            if (!djTrack.isPlaying) {
+              await fetch('https://api.spotify.com/v1/me/player/pause', {
+                method: 'PUT', headers: { Authorization: `Bearer ${t}` },
+              }).catch(() => {})
+            }
+            setListeningAlong(true)
           }
-          setListeningAlong(true)
         } else if (playMismatch) {
           const endpoint = djTrack.isPlaying ? 'play' : 'pause'
-          await fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
+          const r = await fetch(`https://api.spotify.com/v1/me/player/${endpoint}`, {
             method: 'PUT', headers: { Authorization: `Bearer ${t}` },
-          }).catch(() => {})
-          setListeningAlong(true)
+          }).catch(() => null)
+          if (r && (r.ok || r.status === 204)) setListeningAlong(true)
         }
       } catch { /* network */ }
     }
