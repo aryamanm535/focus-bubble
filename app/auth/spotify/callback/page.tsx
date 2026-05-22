@@ -50,6 +50,17 @@ export default function SpotifyCallbackPage() {
         return
       }
 
+      // Popup mode: send token back to the opener tab and close
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type:   'spotify_connected',
+          token:  data.access_token,
+          expiry: Date.now() + data.expires_in * 1000,
+        }, window.location.origin)
+        window.close()
+        return
+      }
+      // Redirect mode fallback
       localStorage.setItem('spotify_access_token', data.access_token)
       localStorage.setItem('spotify_token_expiry', String(Date.now() + data.expires_in * 1000))
       sessionStorage.removeItem('spotify_verifier')

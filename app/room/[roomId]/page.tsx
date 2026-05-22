@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Users, Eye, EyeOff, Check, Share2, Zap, Crown } from 'lucide-react'
+import { ArrowLeft, Users, Eye, EyeOff, Check, Share2, Zap, Crown, Send } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import AmbientScene    from '@/components/ambient/AmbientScene'
@@ -25,6 +25,14 @@ interface ActivityEvent {
   text:  string
   emoji: string
   ts:    number
+}
+
+interface ChatMessage {
+  id:         string
+  fromUserId: string
+  fromName:   string
+  text:       string
+  ts:         number
 }
 
 // ── Avatar card ────────────────────────────────────────────────────────────
@@ -114,12 +122,20 @@ export default function RoomPage() {
   const [copied, setCopied]             = useState(false)
   const [loading, setLoading]           = useState(true)
   const [error, setError]               = useState<string | null>(null)
+  const [activeTab, setActiveTab]       = useState<'activity' | 'chat'>('activity')
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput]       = useState('')
+  const [unreadChat, setUnreadChat]     = useState(0)
+  const [showParticipants, setShowParticipants] = useState(false)
 
-  const channelRef    = useRef<RealtimeChannel | null>(null)
+  const channelRef       = useRef<RealtimeChannel | null>(null)
   const [channelState, setChannelState] = useState<RealtimeChannel | null>(null)
-  const awayTimerRef  = useRef<NodeJS.Timeout | null>(null)
-  const taskConfirmed = useRef(false)
-  const prevCount     = useRef(0)
+  const awayTimerRef     = useRef<NodeJS.Timeout | null>(null)
+  const taskConfirmed    = useRef(false)
+  const prevCount        = useRef(0)
+  const activeTabRef     = useRef<'activity' | 'chat'>('activity')
+  const chatEndRef       = useRef<HTMLDivElement | null>(null)
+  const participantsRef  = useRef<HTMLDivElement | null>(null)
 
   function pushActivity(emoji: string, text: string) {
     const event: ActivityEvent = { id: `${Date.now()}-${Math.random()}`, text, emoji, ts: Date.now() }
@@ -215,6 +231,20 @@ export default function RoomPage() {
 
     channel.on('broadcast', { event: 'end_session' }, () => {
       router.push('/dashboard')
+    })
+
+    channel.on('broadcast', { event: 'chat' }, ({ payload }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = payload as any
+      const msg: ChatMessage = {
+        id:         `${Date.now()}-${Math.random()}`,
+        fromUserId: p.fromUserId ?? '',
+        fromName:   p.fromName ?? 'Someone',
+        text:       p.text ?? '',
+        ts:         p.ts ?? Date.now(),
+      }
+      setChatMessages(prev => [...prev, msg].slice(-100))
+      if (activeTabRef.current !== 'chat') setUnreadChat(prev => prev + 1)
     })
 
     channel.subscribe(async (status) => {
@@ -365,6 +395,43 @@ export default function RoomPage() {
     await channelRef.current?.send({ type: 'broadcast', event: 'end_session', payload: {} })
   }
 
+  function switchTab(tab: 'activity' | 'chat') {
+    setActiveTab(tab)
+    activeTabRef.current = tab
+    if (tab === 'chat') setUnreadChat(0)
+  }
+
+  async function sendChat(e: React.FormEvent) {
+    e.preventDefault()
+    const text = chatInput.trim()
+    if (!text) return
+    const msg = { fromUserId: profile?.id ?? '', fromName: profile?.display_name ?? 'Anonymous', text, ts: Date.now() }
+    setChatMessages(prev => [...prev, { ...msg, id: `local-${Date.now()}` }].slice(-100))
+    setChatInput('')
+    await channelRef.current?.send({ type: 'broadcast', event: 'chat', payload: msg })
+  }
+
+  // Auto-scroll chat to bottom on new messages
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (activeTab === 'chat' && chatMessages.length > 0) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [chatMessages.length, activeTab])
+
+  // Close participants dropdown on outside click
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  useEffect(() => {
+    if (!showParticipants) return
+    function handleClick(e: MouseEvent) {
+      if (participantsRef.current && !participantsRef.current.contains(e.target as Node)) {
+        setShowParticipants(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showParticipants])
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#070510' }}>
       <div className="w-8 h-8 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
@@ -416,10 +483,65 @@ export default function RoomPage() {
             {squadEnergy}% energy
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs"
-               style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
-            <Users size={12} />
-            {participants.length}
+          <div ref={participantsRef} className="relative">
+            <button
+              onClick={() => setShowParticipants(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-all hover:bg-white/10"
+              style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}
+            >
+              <Users size={12} />
+              {participants.length}
+            </button>
+
+            <AnimatePresence>
+              {showParticipants && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-2 w-56 z-50"
+                  style={{
+                    background: 'rgba(10,8,18,0.97)',
+                    backdropFilter: 'blur(24px)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 16,
+                    boxShadow: '0 16px 48px rgba(0,0,0,0.65)',
+                  }}
+                >
+                  <div className="px-3 pt-3 pb-1">
+                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                      Participants · {participants.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-col py-1.5 max-h-64 overflow-y-auto">
+                    {participants.map(u => {
+                      const isUserHost = u.userId === room.host_id
+                      const isSelf     = u.userId === profile?.id
+                      const color      = STATUS_COLORS[u.status] ?? '#7a6a60'
+                      return (
+                        <div key={u.userId} className="flex items-center gap-2.5 px-3 py-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden"
+                               style={{ background: `${color}25`, color, border: `1.5px solid ${color}50` }}>
+                            {u.avatarUrl
+                              ? <img src={u.avatarUrl} alt="" className="w-full h-full object-cover" />
+                              : (u.displayName || '?')[0].toUpperCase()}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1">
+                              <p className="text-xs font-medium text-white truncate">{isSelf ? 'You' : u.displayName}</p>
+                              {isUserHost && <Crown size={9} style={{ color: '#c4b8e0', flexShrink: 0 }} />}
+                            </div>
+                            {u.task && <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10 }}>{u.task}</p>}
+                          </div>
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <button onClick={() => setPresenceEnabled(!presenceEnabled)}
@@ -568,34 +690,105 @@ export default function RoomPage() {
           </motion.div>
         </div>
 
-        {/* Right: Activity feed */}
+        {/* Right: Activity + Chat */}
         <motion.div
           initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }}
-          className="flex flex-col p-4 overflow-hidden" style={{ ...glass, maxHeight: 'calc(100vh - 160px)' }}
+          className="flex flex-col overflow-hidden" style={{ ...glass, maxHeight: 'calc(100vh - 160px)' }}
         >
-          <span className="text-xs font-bold uppercase tracking-wider mb-3 shrink-0"
-                style={{ color: 'rgba(255,255,255,0.35)' }}>Live Activity</span>
-
-          <div className="flex-1 overflow-y-auto flex flex-col gap-2 pr-1">
-            <AnimatePresence mode="popLayout">
-              {activity.length === 0 ? (
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Activity will appear here...</p>
-              ) : activity.map(e => (
-                <motion.div
-                  key={e.id}
-                  layout
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="flex items-start gap-2 text-xs py-1.5 px-2.5 rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.05)' }}
-                >
-                  <span className="text-sm shrink-0">{e.emoji}</span>
-                  <span style={{ color: 'rgba(255,255,255,0.6)' }}>{e.text}</span>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+          {/* Tabs */}
+          <div className="flex shrink-0 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+            {([['activity', 'Activity', null], ['chat', 'Chat', unreadChat]] as const).map(([tab, label, badge]) => (
+              <button
+                key={tab}
+                onClick={() => switchTab(tab)}
+                className="flex-1 py-3 text-xs font-semibold transition-all relative"
+                style={{
+                  color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.35)',
+                  borderBottom: activeTab === tab ? '2px solid rgba(155,141,188,0.8)' : '2px solid transparent',
+                }}
+              >
+                {label}
+                {badge && badge > 0 && (
+                  <span className="absolute top-2 right-4 min-w-[16px] h-4 px-1 rounded-full text-[10px] flex items-center justify-center font-bold"
+                        style={{ background: '#9b8dbc', color: '#fff' }}>
+                    {badge > 9 ? '9+' : badge}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
+
+          {/* Activity tab */}
+          {activeTab === 'activity' && (
+            <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-4 pr-3">
+              <AnimatePresence mode="popLayout">
+                {activity.length === 0 ? (
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Activity will appear here...</p>
+                ) : activity.map(e => (
+                  <motion.div
+                    key={e.id}
+                    layout
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-start gap-2 text-xs py-1.5 px-2.5 rounded-xl"
+                    style={{ background: 'rgba(255,255,255,0.05)' }}
+                  >
+                    <span className="text-sm shrink-0">{e.emoji}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.6)' }}>{e.text}</span>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Chat tab */}
+          {activeTab === 'chat' && (
+            <>
+              <div className="flex-1 overflow-y-auto flex flex-col gap-2 p-4 pr-3 pb-2">
+                {chatMessages.length === 0 ? (
+                  <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>No messages yet — say hi!</p>
+                ) : chatMessages.map(m => (
+                  <div key={m.id} className={`flex flex-col gap-0.5 ${m.fromUserId === profile?.id ? 'items-end' : 'items-start'}`}>
+                    {m.fromUserId !== profile?.id && (
+                      <span className="text-xs px-1" style={{ color: 'rgba(255,255,255,0.35)' }}>{m.fromName}</span>
+                    )}
+                    <div
+                      className="max-w-[85%] px-3 py-2 text-xs break-words"
+                      style={{
+                        background: m.fromUserId === profile?.id ? 'rgba(155,141,188,0.35)' : 'rgba(255,255,255,0.08)',
+                        color: 'rgba(255,255,255,0.9)',
+                        borderRadius: m.fromUserId === profile?.id ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                      }}
+                    >
+                      {m.text}
+                    </div>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              <form onSubmit={sendChat} className="flex gap-2 p-3 shrink-0 border-t"
+                    style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                <input
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  placeholder="Send a message..."
+                  maxLength={500}
+                  className="flex-1 px-3 py-2 text-xs rounded-xl outline-none"
+                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim()}
+                  className="p-2 rounded-xl transition-all hover:bg-white/10 disabled:opacity-30"
+                  style={{ color: '#9b8dbc' }}
+                >
+                  <Send size={14} />
+                </button>
+              </form>
+            </>
+          )}
         </motion.div>
       </div>
 

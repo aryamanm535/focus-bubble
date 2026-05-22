@@ -451,13 +451,40 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     const verifier  = genVerifier()
     const challenge = await genChallenge(verifier)
     sessionStorage.setItem('spotify_verifier', verifier)
-    sessionStorage.setItem('spotify_return', window.location.pathname)
     const q = new URLSearchParams({
       client_id: clientId, response_type: 'code',
       redirect_uri: `${window.location.origin}/auth/spotify/callback`,
       scope: SCOPES, code_challenge_method: 'S256', code_challenge: challenge,
     })
-    window.location.href = `https://accounts.spotify.com/authorize?${q}`
+    const authUrl = `https://accounts.spotify.com/authorize?${q}`
+
+    const popup = window.open(authUrl, 'spotify_oauth', 'width=480,height=660,scrollbars=yes,resizable=yes')
+    if (!popup) {
+      // Popup blocked — fall back to redirect (presence will briefly leave/join)
+      sessionStorage.setItem('spotify_return', window.location.pathname)
+      window.location.href = authUrl
+      return
+    }
+
+    let pollClosed: ReturnType<typeof setInterval>
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
+      if (e.data?.type !== 'spotify_connected') return
+      window.removeEventListener('message', onMessage)
+      clearInterval(pollClosed)
+      localStorage.setItem(TOKEN_KEY, e.data.token)
+      localStorage.setItem(EXPIRY_KEY, String(e.data.expiry))
+      setToken(e.data.token)
+      setConnecting(false)
+    }
+    window.addEventListener('message', onMessage)
+    pollClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollClosed)
+        window.removeEventListener('message', onMessage)
+        setConnecting(false)
+      }
+    }, 500)
   }
 
   // 1. Claim DJ after a delay — but only once the channel is live so the

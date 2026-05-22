@@ -25,7 +25,7 @@ const ENV_COLORS: Record<string, string> = {
   'nature':     '#5a8a4a',
 }
 
-function RoomCard({ room, onJoin }: { room: Room; onJoin: (id: string, isPublic: boolean) => void }) {
+function RoomCard({ room, onJoin, liveCount }: { room: Room; onJoin: (id: string, isPublic: boolean) => void; liveCount?: number }) {
   const Icon = ENV_ICONS[room.environment] ?? Coffee
   const color = ENV_COLORS[room.environment] ?? '#7a6a60'
   const env = ENVIRONMENTS.find((e) => e.id === room.environment)
@@ -60,7 +60,7 @@ function RoomCard({ room, onJoin }: { room: Room; onJoin: (id: string, isPublic:
       <div className="flex items-center justify-between text-xs" style={{ color: '#b8a89a' }}>
         <div className="flex items-center gap-1">
           <Users size={12} />
-          <span>{room.participant_count ?? 0} in room</span>
+          <span>{liveCount ?? room.participant_count ?? 0} in room</span>
         </div>
         <div className="flex items-center gap-1">
           <Clock size={12} />
@@ -258,12 +258,29 @@ export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
 
-  const [profile, setProfile]         = useState<Profile | null>(null)
-  const [rooms, setRooms]             = useState<Room[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [showCreate, setShowCreate]   = useState(false)
-  const [joinKey, setJoinKey]         = useState('')
-  const [keyError, setKeyError]       = useState<string | null>(null)
+  const [profile, setProfile]               = useState<Profile | null>(null)
+  const [rooms, setRooms]                   = useState<Room[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [showCreate, setShowCreate]         = useState(false)
+  const [joinKey, setJoinKey]               = useState('')
+  const [keyError, setKeyError]             = useState<string | null>(null)
+  const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({})
+
+  // Subscribe to each room's presence channel to get live participant counts
+  useEffect(() => {
+    if (!rooms.length) return
+    const channels = rooms.map(room => {
+      const ch = supabase.channel(`room:${room.id}`)
+      ch.on('presence', { event: 'sync' }, () => {
+        const count = Object.keys(ch.presenceState()).length
+        setParticipantCounts(prev => ({ ...prev, [room.id]: count }))
+      })
+      ch.subscribe()
+      return ch
+    })
+    return () => { channels.forEach(ch => supabase.removeChannel(ch)) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rooms.length])
 
   useEffect(() => {
     let mounted = true
@@ -403,7 +420,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {rooms.map((room) => (
-              <RoomCard key={room.id} room={room} onJoin={handleJoin} />
+              <RoomCard key={room.id} room={room} onJoin={handleJoin} liveCount={participantCounts[room.id]} />
             ))}
           </div>
         )}
