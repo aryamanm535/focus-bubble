@@ -82,6 +82,7 @@ export default function HostControls({ roomId, isHost, participants, currentUser
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center px-4"
             style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setModal(null) }}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
@@ -165,17 +166,23 @@ export default function HostControls({ roomId, isHost, participants, currentUser
                   )}
 
                   <div className="flex gap-2">
-                    <button onClick={doLeaveWithoutTransfer}
+                    <button onClick={() => setModal(null)}
                             className="flex-1 py-2.5 rounded-xl text-sm transition-all hover:bg-white/10"
-                            style={{ border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.45)' }}>
-                      Just leave
+                            style={{ border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' }}>
+                      Cancel
                     </button>
-                    {transferTo && (
+                    {transferTo ? (
                       <button onClick={doTransferAndLeave} disabled={loading}
                               className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 flex items-center justify-center gap-1.5"
                               style={{ background: 'linear-gradient(135deg, #7d9e84, #9b8dbc)', color: '#fff' }}>
                         {loading ? <Loader2 size={14} className="animate-spin" /> : <UserCheck size={14} />}
                         Transfer & leave
+                      </button>
+                    ) : (
+                      <button onClick={doLeaveWithoutTransfer}
+                              className="flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+                              style={{ background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
+                        Just leave
                       </button>
                     )}
                   </div>
