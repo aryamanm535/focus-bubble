@@ -460,15 +460,15 @@ export default function SpotifyPanel({ userId, displayName, channel }: Props) {
     window.location.href = `https://accounts.spotify.com/authorize?${q}`
   }
 
-  // 1. Claim DJ after a short delay — gives the existing DJ time to announce
-  //    themselves via the music_presence handler before this fires.
-  //    Functional update: only claim if no one else already has.
+  // 1. Claim DJ after a delay — but only once the channel is live so the
+  //    music_presence exchange with the existing DJ can complete first.
+  //    Functional update: only claim if nobody else has already.
   useEffect(() => {
-    if (!token) return
-    const t = setTimeout(() => setDjUserId(prev => prev ?? userId), 2500)
+    if (!token || !channel) return
+    const t = setTimeout(() => setDjUserId(prev => prev ?? userId), 3000)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [!!token, !!channel])
 
   // 2. Announce Spotify presence when channel is ready
   useEffect(() => {

@@ -116,6 +116,7 @@ export default function RoomPage() {
   const [error, setError]               = useState<string | null>(null)
 
   const channelRef    = useRef<RealtimeChannel | null>(null)
+  const [channelState, setChannelState] = useState<RealtimeChannel | null>(null)
   const awayTimerRef  = useRef<NodeJS.Timeout | null>(null)
   const taskConfirmed = useRef(false)
   const prevCount     = useRef(0)
@@ -164,6 +165,7 @@ export default function RoomPage() {
       config: { presence: { key: profile.id } },
     })
     channelRef.current = channel
+    setChannelState(channel)
 
     channel.on('presence', { event: 'sync' }, () => {
       const raw = channel.presenceState<PresenceUser>()
@@ -234,6 +236,7 @@ export default function RoomPage() {
 
     return () => {
       window.removeEventListener('beforeunload', handleUnload)
+      setChannelState(null)
       channel.untrack().then(() => supabase.removeChannel(channel))
     }
   }, [profile?.id, room?.id])
@@ -430,7 +433,7 @@ export default function RoomPage() {
             <span className="hidden sm:inline">Presence</span>
           </button>
 
-          <SpotifyPanel userId={profile?.id ?? ''} displayName={profile?.display_name ?? 'Anonymous'} channel={channelRef.current} />
+          <SpotifyPanel userId={profile?.id ?? ''} displayName={profile?.display_name ?? 'Anonymous'} channel={channelState} />
 
           <button onClick={copyShareable}
                   className="p-2 rounded-xl hover:bg-white/10 transition-all"
@@ -461,7 +464,7 @@ export default function RoomPage() {
               userId={profile.id}
               displayName={profile.display_name ?? 'Anonymous'}
               mediaMode={room.media_mode}
-              channel={channelRef.current}
+              channel={channelState}
             />
           )}
 
