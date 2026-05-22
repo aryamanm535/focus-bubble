@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Users, Eye, EyeOff, Check, Share2, Zap, Crown, Send } from 'lucide-react'
+import { ArrowLeft, Users, Eye, EyeOff, Check, Share2, Zap, Crown, Send, MessageCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import AmbientScene    from '@/components/ambient/AmbientScene'
@@ -697,25 +697,37 @@ export default function RoomPage() {
         >
           {/* Tabs */}
           <div className="flex shrink-0 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-            {([['activity', 'Activity', null], ['chat', 'Chat', unreadChat]] as const).map(([tab, label, badge]) => (
-              <button
-                key={tab}
-                onClick={() => switchTab(tab)}
-                className="flex-1 py-3 text-xs font-semibold transition-all relative"
-                style={{
-                  color: activeTab === tab ? '#fff' : 'rgba(255,255,255,0.35)',
-                  borderBottom: activeTab === tab ? '2px solid rgba(155,141,188,0.8)' : '2px solid transparent',
-                }}
-              >
-                {label}
-                {badge && badge > 0 && (
-                  <span className="absolute top-2 right-4 min-w-[16px] h-4 px-1 rounded-full text-[10px] flex items-center justify-center font-bold"
-                        style={{ background: '#9b8dbc', color: '#fff' }}>
-                    {badge > 9 ? '9+' : badge}
+            <button
+              onClick={() => switchTab('activity')}
+              className="flex-1 py-3 text-xs font-semibold transition-all"
+              style={{
+                color: activeTab === 'activity' ? '#fff' : 'rgba(255,255,255,0.35)',
+                borderBottom: activeTab === 'activity' ? '2px solid rgba(155,141,188,0.8)' : '2px solid transparent',
+              }}
+            >
+              Activity
+            </button>
+            <button
+              onClick={() => switchTab('chat')}
+              className="flex-1 py-3 text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
+              style={{
+                color: activeTab === 'chat' ? '#fff' : 'rgba(255,255,255,0.35)',
+                borderBottom: activeTab === 'chat' ? '2px solid rgba(155,141,188,0.8)' : '2px solid transparent',
+              }}
+            >
+              Chat
+              {unreadChat > 0 && (
+                <span className="relative flex items-center justify-center">
+                  <MessageCircle size={13} className="animate-pulse" style={{ color: '#9b8dbc' }} />
+                  <span
+                    className="absolute -top-1.5 -right-1.5 min-w-[13px] h-3.5 px-0.5 rounded-full text-[9px] flex items-center justify-center font-bold leading-none"
+                    style={{ background: '#9b8dbc', color: '#fff' }}
+                  >
+                    {unreadChat > 9 ? '9+' : unreadChat}
                   </span>
-                )}
-              </button>
-            ))}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Activity tab */}
