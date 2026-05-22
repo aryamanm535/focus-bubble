@@ -2,11 +2,11 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, LogOut, Users, Clock, Lock, Globe, Coffee, BookOpen, Laptop, Leaf, X, Loader2 } from 'lucide-react'
+import { Plus, LogOut, Users, Clock, Lock, Globe, Coffee, BookOpen, Laptop, Leaf, X, Loader2, Camera } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { ENVIRONMENTS, generateRoomKey } from '@/lib/utils'
 import type { Room, Profile } from '@/types'
@@ -265,6 +265,28 @@ export default function DashboardPage() {
   const [joinKey, setJoinKey]               = useState('')
   const [keyError, setKeyError]             = useState<string | null>(null)
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({})
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file || !profile) return
+    // Reset input so the same file can be re-selected
+    e.target.value = ''
+    setUploadingAvatar(true)
+    const ext  = file.name.split('.').pop() ?? 'jpg'
+    const path = `${profile.id}.${ext}`
+    const { error: uploadErr } = await supabase.storage
+      .from('avatars')
+      .upload(path, file, { upsert: true, contentType: file.type })
+    if (uploadErr) { setUploadingAvatar(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+    // Add cache-buster so the img re-fetches
+    const busted = `${publicUrl}?t=${Date.now()}`
+    await supabase.from('profiles').update({ avatar_url: busted }).eq('id', profile.id)
+    setProfile(prev => prev ? { ...prev, avatar_url: busted } : prev)
+    setUploadingAvatar(false)
+  }
 
   // Subscribe to each room's presence channel to get live participant counts
   useEffect(() => {
@@ -338,10 +360,34 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           {profile && (
             <div className="hidden sm:flex items-center gap-2 text-sm" style={{ color: '#7a6a60' }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold"
-                   style={{ background: '#e0d9f0', color: '#7a6d9e' }}>
-                {(profile.display_name ?? 'U')[0].toUpperCase()}
-              </div>
+              {/* Clickable avatar — opens file picker */}
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                title="Change profile photo"
+                className="relative group shrink-0"
+              >
+                <div className="w-8 h-8 rounded-full overflow-hidden flex items-center justify-center text-xs font-semibold transition-all group-hover:ring-2 group-hover:ring-offset-1"
+                     style={{ background: '#e0d9f0', color: '#7a6d9e' }}>
+                  {profile.avatar_url
+                    ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                    : (profile.display_name ?? 'U')[0].toUpperCase()}
+                </div>
+                {/* Hover overlay with camera icon */}
+                <div className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                     style={{ background: 'rgba(0,0,0,0.45)' }}>
+                  {uploadingAvatar
+                    ? <Loader2 size={12} className="animate-spin text-white" />
+                    : <Camera size={11} color="white" />}
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarUpload}
+                />
+              </button>
               <span>{profile.display_name}</span>
               {profile.streak_days > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-xs" style={{ background: '#fdf3f1', color: '#c86452' }}>
