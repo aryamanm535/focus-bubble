@@ -266,26 +266,48 @@ export default function DashboardPage() {
   const [keyError, setKeyError]             = useState<string | null>(null)
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({})
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [avatarError, setAvatarError]         = useState<string | null>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  function resizeToDataUrl(file: File, maxPx = 256): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      const objectUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl)
+        const scale  = Math.min(1, maxPx / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { reject(new Error('canvas unavailable')); return }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('load failed')) }
+      img.src = objectUrl
+    })
+  }
 
   async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !profile) return
-    // Reset input so the same file can be re-selected
     e.target.value = ''
     setUploadingAvatar(true)
-    const ext  = file.name.split('.').pop() ?? 'jpg'
-    const path = `${profile.id}.${ext}`
-    const { error: uploadErr } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true, contentType: file.type })
-    if (uploadErr) { setUploadingAvatar(false); return }
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-    // Add cache-buster so the img re-fetches
-    const busted = `${publicUrl}?t=${Date.now()}`
-    await supabase.from('profiles').update({ avatar_url: busted }).eq('id', profile.id)
-    setProfile(prev => prev ? { ...prev, avatar_url: busted } : prev)
-    setUploadingAvatar(false)
+    setAvatarError(null)
+    try {
+      const dataUrl = await resizeToDataUrl(file, 256)
+      const { error: dbErr } = await supabase
+        .from('profiles')
+        .update({ avatar_url: dataUrl })
+        .eq('id', profile.id)
+      if (dbErr) throw dbErr
+      setProfile(prev => prev ? { ...prev, avatar_url: dataUrl } : prev)
+    } catch {
+      setAvatarError('Upload failed — try a smaller image.')
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   // Subscribe to each room's presence channel to get live participant counts
@@ -388,7 +410,12 @@ export default function DashboardPage() {
                   onChange={handleAvatarUpload}
                 />
               </button>
-              <span>{profile.display_name}</span>
+              <div>
+                <span>{profile.display_name}</span>
+                {avatarError && (
+                  <p className="text-xs mt-0.5" style={{ color: '#c86452' }}>{avatarError}</p>
+                )}
+              </div>
               {profile.streak_days > 0 && (
                 <span className="px-2 py-0.5 rounded-full text-xs" style={{ background: '#fdf3f1', color: '#c86452' }}>
                   🔥 {profile.streak_days}
